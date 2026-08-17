@@ -1,0 +1,1 @@
+{"nftables":[{"metainfo":{"version":"1.0.9"}},{"counter":{"family":"inet","table":"hp","name":"c_t22","handle":4,"packets":1234,"bytes":74040}},{"counter":{"family":"inet","table":"hp","name":"c_t443","handle":5,"packets":88,"bytes":5280}},{"counter":{"family":"inet","table":"hp","name":"c_tcp_other","handle":6,"packets":99,"bytes":5940}}]}

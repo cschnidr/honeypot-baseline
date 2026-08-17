@@ -1,0 +1,1 @@
+{"nftables":[{"metainfo":{"version":"1.0.9"}},{"set":{"family":"inet","name":"scan6","table":"hp","type":"ipv6_addr","handle":3,"flags":["dynamic","timeout"],"timeout":2592000}}]}

@@ -1,0 +1,17 @@
+# Distributed OpenCanary image - built once, never committed
+image.tar
+
+# Collected measurement data (contains third-party source addresses)
+data/
+nodes.txt
+
+# Private notes about the specific run
+NOTES.local.md
+
+# Local analysis output
+results.csv
+*.png
+
+# Python
+__pycache__/
+*.pyc
