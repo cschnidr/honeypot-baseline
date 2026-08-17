@@ -47,7 +47,41 @@ indistinguishable from a real effect. A residential host is a useful third data
 point but not a control group: it varies network type, address reputation and
 ASN prominence all at once.
 
-A small instance is plenty: the whole stack idles at a few tens of MB.
+## Host requirements
+
+The entry tier at any VPS provider is already more than enough.
+
+| Resource | Minimum | Recommended | Why |
+|---|---|---|---|
+| RAM | 512 MB | 1 GB | Debian base ~200 MB, Docker daemon ~100 MB, OpenCanary (Python + Twisted, 11 modules) ~100 MB. Plus kernel memory for the nftables sets — see below. |
+| vCPU | 1 | 1 | Packet counting happens in the kernel and is essentially free. OpenCanary is a single Twisted reactor and only ever sees the small fraction of scans that complete a handshake. |
+| Disk | 10 GB | 20 GB SSD | Debian ~2 GB, container image ~400 MB, plus `image.tar` if you leave it on the host. The rest is log and dump growth. |
+| Traffic | — | a few GB/month | Inbound scan traffic is overwhelmingly small SYN packets. Only relevant if your plan is metered. |
+
+**Use the same size on every host.** Instance size does not plausibly affect how
+much untargeted scanning arrives, so this is not a real confounder — but keeping
+it identical costs nothing and removes the question from the write-up.
+
+### The one thing that actually grows
+
+`bootstrap.sh` sizes the IPv4 source set at 1,048,576 entries with a 30-day
+timeout. Each element carries its own expiry, so a filled set is on the order of
+100 MB of **kernel** memory (estimate — measure with `nft list set inet hp scan4`
+if it matters to you). On a 512 MB host, lower the `size` in the ruleset
+accordingly; a few hundred thousand entries is plenty for a three-week run.
+
+### Disk growth over a 21-day run
+
+Rough, and entirely dependent on how much traffic the host attracts:
+
+| Data | Size |
+|---|---|
+| Counter snapshots (hourly JSONL) | 1–2 MB |
+| Daily source dumps | Each dump contains the *whole* set, so this is cumulative — roughly 2–3 MB/day gzipped at a few hundred thousand addresses, so ~50 MB total |
+| OpenCanary log | Traffic dependent: tens of MB/day on a busy datacenter address, almost nothing on a quiet one |
+
+Budget ~1 GB for `/var` and it stops being something you think about. Docker's
+own container log is capped at 3 × 10 MB in the compose file.
 
 ## Quick start
 
