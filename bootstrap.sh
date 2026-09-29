@@ -35,8 +35,12 @@ command -v systemctl >/dev/null || die "systemd required"
 log "Installing packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
+# docker-cli and docker-compose are only *Recommends* of docker.io on Debian 13,
+# so with --no-install-recommends they must be named explicitly or the `docker`
+# CLI and `docker compose` subcommand are missing and the image build fails.
+# On trixie the `docker-compose` package is Compose v2 (pulls docker-buildx).
 apt-get install -y -qq --no-install-recommends \
-    nftables docker.io python3 jq rsync chrony ca-certificates
+    nftables docker.io docker-cli docker-compose python3 jq rsync chrony ca-certificates
 
 log "Setting timezone to UTC, enabling chrony"
 timedatectl set-timezone UTC
