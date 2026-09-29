@@ -122,6 +122,39 @@ hosts at four different times can be four different images.
 
 `NODE_ID` and `ADMIN_CIDR` are the only per-host variables. A wrong
 `ADMIN_CIDR` locks the host out — keep out-of-band console access ready.
+`ADMIN_CIDR` must be a real address as a `/32` (e.g. `203.0.113.7/32`), or
+`0.0.0.0/0` to allow management from anywhere. Note `0.0.0.0/32` matches
+*nobody* — it is the classic lockout mistake.
+
+## AWS deployment
+
+Verified end-to-end on a `t3.micro` (1 GB) free-tier instance with the official
+`debian-13-amd64` AMI and a 20 GB gp3 volume — both comfortably in the
+recommended tier. AWS-specific notes the generic quick start omits:
+
+- **Default user is `admin`** on the Debian AMI (not `root`/`ec2-user`). SSH in
+  as `admin@<ip>` and run bootstrap with `sudo`; use `admin@<ip>` in your
+  `nodes.txt` lines later.
+- **The Security Group is a second firewall in front of nftables** — nftables
+  can only count traffic the SG admits. Open **all TCP and all UDP (0–65535)
+  from `0.0.0.0/0`**, plus ICMP if you want `c_icmp` to mean anything. Opening
+  only the emulated ports leaves `c_tcp_other`/`c_udp_other` and the
+  unique-source diversity signal reading ~zero, because everything else is
+  dropped before nftables sees it. The SG rules **must be identical on every
+  host**, exactly like the port contract, or the comparison is void.
+- **Prep and reboot:** `sudo apt update && sudo apt upgrade`, then reboot if the
+  kernel was upgraded (do it while SSH is still on port 22, before bootstrap
+  moves it). `sudo apt install git` to clone the repo.
+- **Out-of-band access is mandatory, not optional.** Bootstrap moves SSH to
+  `62222`, and corporate networks routinely block *outbound* to non-standard
+  high ports — you may not be able to reconnect from work. Enable **EC2 Serial
+  Console** (`aws ec2 enable-serial-console-access --region <region>`, Nitro
+  instances only) and set an OS password with `sudo passwd admin` so console
+  login works. Verify the console reaches a login prompt *before* you close your
+  first SSH session.
+- **Isolation:** launch into a throwaway VPC/account with no peering.
+  `network_mode: host` removes the container boundary, so the VPC is the real
+  one.
 
 ## Safety
 
