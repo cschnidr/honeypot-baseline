@@ -94,7 +94,10 @@ collected data; `analyze.py` can run anywhere Python 3 exists given a populated
   in one place, change them everywhere and re-verify — a mismatch silently
   invalidates every cross-host comparison.
 - **Counter naming:** `c_t<port>` (TCP), `c_u<port>` (UDP), plus `c_tcp_other`,
-  `c_udp_other`, `c_icmp`. `analyze.py` relies on the `c_t` prefix to sum SYNs.
+  `c_udp_other`, `c_udp_bcast`, `c_icmp`. `analyze.py` relies on the `c_t`
+  prefix to sum SYNs. `c_u<port>`/`c_udp_other` are unicast-only
+  (`meta pkttype host`); broadcast/multicast UDP is bucketed in `c_udp_bcast`
+  and is a per-host environment characteristic, not a scan signal.
 - Reproducibility is the whole point: the image is built once and shipped as
   `image.tar`; identity is the recorded Docker image ID in each node's manifest,
   not a version tag.

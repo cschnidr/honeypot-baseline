@@ -55,6 +55,18 @@ you are investigating, say so explicitly and treat the result as inferential.
 reputation and ASN prominence at once. It is a separate data point, not a
 control group.
 
+**UDP broadcast/multicast on shared segments.** A non-cloud VPS often sits on a
+shared L2 segment and receives broadcast/multicast addressed to the segment
+rather than to the host — SSDP on 1900, NetBIOS on 137, mDNS, LLMNR on 5355. An
+isolated cloud host in its own VPC never sees any of it, so a shared-segment
+host can show tens of thousands of UDP packets that are pure neighbourhood
+noise, dwarfing the actual internet scan traffic. Raw UDP counts are therefore
+not comparable between the two classes. Mitigation: the ruleset counts only
+unicast addressed to the host (`meta pkttype host`) in the per-port and
+`c_udp_other` counters, and buckets broadcast/multicast separately in
+`c_udp_bcast`. Compare `c_u*` / `c_udp_other` across hosts; treat `c_udp_bcast`
+as a per-host environment characteristic, not a scan signal.
+
 **Filtered versus closed ports.** Chain policy is `drop`, so non-emulated ports
 appear *filtered* rather than *closed* (no RST). Identical across hosts and
 therefore internally comparable, but absolute numbers are not directly
@@ -80,6 +92,10 @@ must run the *same* window — that is what `--start` / `--end` enforce.
 Counters record **raw SYN packets including retransmits**, not conntrack
 entries. That avoids conntrack pressure under load, but the number means "SYN
 packets", not "connection attempts" — state it that way in any write-up.
+
+UDP per-port and `c_udp_other` counters are **unicast-only** (`meta pkttype
+host`); broadcast/multicast is counted separately in `c_udp_bcast` and is not
+part of the scan signal (see the shared-segment confounder above).
 
 Counters are monotonic. `bin/analyze.py` sums deltas between consecutive
 snapshots and treats a backwards step (reboot, ruleset reload) as a reset.
