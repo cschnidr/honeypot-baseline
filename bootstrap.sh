@@ -95,6 +95,7 @@ mkdir -p /etc/nftables.d
   echo "  counter c_icmp {}"
   echo "  counter c_tcp_other {}"
   echo "  counter c_udp_other {}"
+  echo "  counter c_udp_bcast {}"
   for p in $CNT_TCP; do echo "  counter c_t$p {}"; done
   for p in $CNT_UDP; do echo "  counter c_u$p {}"; done
   echo "  chain input {"
@@ -116,8 +117,13 @@ mkdir -p /etc/nftables.d
     echo "    tcp flags syn / fin,syn,rst,ack tcp dport $p counter name c_t$p"
   done
   echo "    tcp flags syn / fin,syn,rst,ack tcp dport != { $(echo $CNT_TCP | tr ' ' ',') } counter name c_tcp_other"
-  for p in $CNT_UDP; do echo "    udp dport $p counter name c_u$p"; done
-  echo "    udp dport != { $(echo $CNT_UDP | tr ' ' ',') } counter name c_udp_other"
+  # L2/L3 broadcast+multicast UDP is shared-segment noise (SSDP, NetBIOS, mDNS,
+  # LLMNR) that a non-cloud host sees but an isolated-VPC host never does.
+  # Count it separately and make the per-port / other UDP counters unicast-only
+  # (meta pkttype host), so UDP stays comparable across host classes.
+  echo "    meta pkttype { broadcast, multicast } counter name c_udp_bcast"
+  for p in $CNT_UDP; do echo "    udp dport $p meta pkttype host counter name c_u$p"; done
+  echo "    udp dport != { $(echo $CNT_UDP | tr ' ' ',') } meta pkttype host counter name c_udp_other"
   # Let the emulated ports through; everything else hits policy drop
   echo "    tcp dport { $(echo $HP_TCP | tr ' ' ',') } accept"
   echo "  }"
