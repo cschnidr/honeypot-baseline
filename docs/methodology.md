@@ -84,6 +84,7 @@ must run the *same* window — that is what `--start` / `--end` enforce.
 | SYN packets per TCP port per day | nftables named counters |
 | UDP packets per port per day | nftables named counters |
 | Unique source IPv4/IPv6 addresses | nftables dynamic sets, daily dumps |
+| First/last SYN per source, ports per source | hp-synlog hourly pcaps |
 | Time to first contact after go-live | first OpenCanary event / first counter delta |
 | Credentials attempted | OpenCanary `logdata.USERNAME/PASSWORD` |
 | HTTP request paths and user agents | OpenCanary `logdata.PATH/USERAGENT` |
@@ -106,6 +107,16 @@ inside `--start`/`--end` rather than trusting the last count. Dumps before the
 window are ignored, so a host that has been running longer does not collect
 extra sources. The set itself still holds up to 30 days of history, so the
 sets must also be flushed at the window start (below).
+
+The per-source SYN log (`hp-synlog`, hourly pcaps) exists because counters and
+daily set dumps say *how many* sources arrived, not *when* each one started and
+stopped. Only timelines can distinguish upstream restriction of individual
+scanners ("stops reaching this host within minutes") from differences in
+address-range popularity ("fewer scanners bother with this range"). It captures
+headers only (96 bytes), inbound TCP SYNs without ACK, IPv4 and IPv6 without
+extension headers, management port excluded. Capture runs in user space, so
+under extreme load it can drop packets where the kernel counters do not —
+compare its per-host SYN total with the counter total and report any gap.
 
 ## Before the measurement window
 

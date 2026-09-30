@@ -26,3 +26,19 @@ if [[ "${1:-}" == "--ipdump" ]]; then
     gzip -c "$TMP/scan4.json" > "$DATA/ipdump/${NODE_ID}-${DAY}-v4.json.gz"
     gzip -c "$TMP/scan6.json" > "$DATA/ipdump/${NODE_ID}-${DAY}-v6.json.gz"
 fi
+
+# hp-synlog: gzip every closed hourly pcap (all but the newest, which tcpdump
+# is still writing). Also a disk guard - a SYN flood must not fill the disk.
+SYNLOG="$DATA/synlog"
+if [[ -d "$SYNLOG" ]]; then
+    newest="$(ls -1t "$SYNLOG"/*.pcap 2>/dev/null | head -1 || true)"
+    for f in "$SYNLOG"/*.pcap; do
+        [[ -e "$f" && "$f" != "$newest" ]] || continue
+        gzip -f "$f"
+    done
+    free_kb="$(df -Pk "$SYNLOG" | awk 'NR==2 {print $4}')"
+    if [[ -n "$free_kb" && "$free_kb" -lt 1048576 ]]; then
+        echo "hp-snapshot: <1 GB free, stopping hp-synlog" >&2
+        systemctl stop hp-synlog.service || true
+    fi
+fi

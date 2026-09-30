@@ -6,7 +6,8 @@
 |---|---|
 | `/var/lib/honeypot/snapshots/<node>-<YYYY-MM-DD>.jsonl` | hourly counter snapshots |
 | `/var/lib/honeypot/ipdump/<node>-<YYYY-MM-DD>-v4.json.gz` | daily full unique-source dump |
-| `/var/lib/honeypot/manifest.txt` | host fingerprint (hashes, image ID, port lists) |
+| `/var/lib/honeypot/synlog/<node>-<YYYYmmddTHHMMSS>.pcap[.gz]` | hourly per-source SYN log (hp-synlog), gzipped once closed |
+| `/var/lib/honeypot/manifest.txt` | host fingerprint (hashes, image ID, port lists, synlog interface/filter) |
 | `/var/log/opencanary/opencanary.log` | one JSON object per service interaction |
 | `/etc/honeypot-node-id` | the node's `NODE_ID` |
 
@@ -94,6 +95,33 @@ burn-in. Output is three blocks:
 
 `--csv` writes long-format `node,counter,packets` for plotting elsewhere.
 Standard library only, so it runs anywhere Python 3 does.
+
+### Per-source cut-off analysis
+
+```bash
+./bin/analyze.py ./data --start ... --end ... --cutoff host-a,host-b
+```
+
+Reads the hp-synlog pcaps (stdlib pcap parser; Ethernet/VLAN, Linux cooked
+v1/v2 and raw IP link types) and builds a timeline of SYN timestamps and
+destination ports per source address. `A` is the host whose provider claims
+automatic scanner restriction, `B` the comparison host.
+
+- **Shared source:** ≥ 3 SYNs at both hosts inside the window.
+- **Outlived at B:** B still receives ≥ 3 SYNs from the source more than 60 min
+  after A's last SYN from it. *Outlived at A* is symmetric.
+- **R** = share of shared sources outlived at B ÷ share outlived at A, plus the
+  median active span (first→last SYN) at A of the outlived-at-B sources.
+- **H1:** SUPPORTED if R ≥ 2 and that median span ≤ 30 min; CONTRADICTED if
+  R ≤ 0.5; INCONCLUSIVE otherwise or with fewer than 200 shared sources.
+- **H2 (heavy scanners, ≥ 10 distinct ports at one host):** SUPPORTED if those
+  seen only at B outnumber those seen only at A at least 2:1.
+
+The thresholds are constants in `analyze.py`, deliberately not options: they
+were fixed before the measurement window. The report also prints the median
+SYN count per shared source at each host. If one host is hit much more often,
+sources look "outlived" there by chance and R is biased — read R together with
+those numbers.
 
 ## Reading the result
 
