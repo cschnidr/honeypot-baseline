@@ -101,18 +101,32 @@ Counters are monotonic. `bin/analyze.py` sums deltas between consecutive
 snapshots and treats a backwards step (reboot, ruleset reload) as a reset.
 
 The unique-source sets have a 30-day timeout, so a single reading can miss early
-scanners on a long run. `analyze.py` therefore unions all daily dumps rather
-than trusting the last count.
+scanners on a long run. `analyze.py` therefore unions the daily dumps dated
+inside `--start`/`--end` rather than trusting the last count. Dumps before the
+window are ignored, so a host that has been running longer does not collect
+extra sources. The set itself still holds up to 30 days of history, so the
+sets must also be flushed at the window start (below).
 
 ## Before the measurement window
 
 1. `bin/verify-exposure.sh` from a machine **outside** `ADMIN_CIDR` — the port
    lists must be identical. A host with a different port state makes the
    comparison void for that port.
-2. Compare `manifest.txt` across hosts: the config and ruleset hashes and the
-   Docker image ID must match.
+2. Compare `manifest.txt` across hosts: `sha256_nft` (ruleset) and
+   `docker_image_id` must match. `sha256_opencanary_conf` differs by design,
+   because each host's `NODE_ID` is written into its config.
 3. 48h burn-in, excluded from the window.
-4. Record the window start and each host's allocation time.
+4. Flush the unique-source sets on every host at the window start, so burn-in
+   sources are not carried into the window. Schedule it identically on all
+   hosts:
+
+   ```bash
+   sudo systemd-run --on-calendar='<window start> UTC' \
+     sh -c 'nft flush set inet hp scan4; nft flush set inet hp scan6'
+   ```
+
+   Counters are not affected; `analyze.py` handles them by delta.
+5. Record the window start and each host's allocation time.
 
 ## Limitations to state in any write-up
 

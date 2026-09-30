@@ -34,8 +34,9 @@ ruleset was loaded.
 
 `unique_src_v4` is the size of the dynamic nftables set at snapshot time. The
 set has a 30-day timeout, so on a long run a single reading can miss early
-scanners — `analyze.py` therefore unions all daily dumps rather than trusting
-the last count.
+scanners — `analyze.py` therefore unions the daily dumps dated inside
+`--start`/`--end` rather than trusting the last count. Resolution is one day
+(dumps are written at 00:00 UTC).
 
 ### OpenCanary record
 
@@ -117,6 +118,8 @@ control for a datacenter one. Look at:
   less of the same.
 
 Sanity checks before drawing any conclusion: every host has a comparable number
-of snapshots, `manifest.txt` hashes match across hosts, and
+of snapshots, `sha256_nft` and `docker_image_id` in `manifest.txt` match across
+hosts (`sha256_opencanary_conf` differs by design — it contains `NODE_ID`), the
+scan sets were flushed at the window start, and
 `bin/verify-exposure.sh` passed at the start of the window. If any of those
 fail, the volume comparison is not valid.

@@ -26,6 +26,7 @@ import csv
 import gzip
 import json
 import pathlib
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -82,14 +83,28 @@ def counter_deltas(rows, start, end):
     return totals
 
 
-def unique_ips(node_dir):
-    """Union of all daily IPv4 dumps = unique sources over the whole run.
+DUMP_DATE = re.compile(r"(\d{4}-\d{2}-\d{2})-v4\.json\.gz$")
+
+
+def unique_ips(node_dir, start=None, end=None):
+    """Union of the daily IPv4 dumps inside [start, end] = unique sources.
 
     The dynamic set has a 30d timeout, so a single dump can miss early
     scanners on a long run; the union across dumps is the honest number.
+
+    Dumps are written at 00:00 UTC and named by that date. Only dumps whose
+    date falls inside the window are used, so burn-in dumps (and dumps from a
+    host that started earlier than the others) cannot inflate the count. The
+    resolution is one day. For a clean start, flush the scan sets on every
+    host at the window start (see docs/methodology.md).
     """
     seen = set()
     for path in sorted((node_dir / "ipdump").glob("*-v4.json.gz")):
+        m = DUMP_DATE.search(path.name)
+        if m and (start is not None or end is not None):
+            when = datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            if (start is not None and when < start) or (end is not None and when > end):
+                continue
         try:
             with gzip.open(path, "rt") as fh:
                 doc = json.load(fh)
@@ -194,7 +209,7 @@ def main():
             "first_snapshot": rows[0]["_ts"] if rows else None,
             "last_snapshot": rows[-1]["_ts"] if rows else None,
             "counters": counter_deltas(rows, start, end),
-            "unique_ips": unique_ips(node_dir),
+            "unique_ips": unique_ips(node_dir, start, end),
             "canary": read_opencanary(node_dir, start, end),
         }
 
