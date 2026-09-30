@@ -31,9 +31,9 @@ Status (per `README.md`): written and syntax-checked, **not yet deployed**.
 | `bootstrap.sh` | Per-host setup, run identically on every node. Installs packages, moves SSH to port 62222, builds/loads the nftables `hp` table, loads/builds the OpenCanary image, starts the container, installs snapshot timers, writes a fingerprint manifest. |
 | `opencanary/Dockerfile` | Builds the `honeypot-opencanary:pinned` image (Python 3.12 slim + `pip install opencanary`). Built once, distributed via `docker save`/`load`. |
 | `opencanary/opencanary.conf` | Config template with `__NODE_ID__` placeholder. 11 emulated TCP services; UDP amplification modules (ntp/snmp/sip/tftp) deliberately disabled. |
-| `bin/snapshot.sh` | Installed on-node as `hp-snapshot`. Dumps nft counters/sets to JSON and appends one JSONL record via `hp_snapshot.py`. `--ipdump` also gzips the full source-IP list. |
+| `bin/snapshot.sh` | Installed on-node as `hp-snapshot`. Dumps nft counters/sets to JSON and appends one JSONL record via `hp_snapshot.py`. `--ipdump` also gzips the full source-IP list. Also gzips closed hp-synlog pcaps and stops hp-synlog below 1 GB free disk. |
 | `bin/hp_snapshot.py` | Pure transform: reads nft JSON, prints exactly one JSON object. No side effects. |
-| `bin/analyze.py` | Collector-side aggregation and comparison report. Stdlib only. Computes counter deltas, unions daily IP dumps, parses the OpenCanary log. |
+| `bin/analyze.py` | Collector-side aggregation and comparison report. Stdlib only. Computes counter deltas, unions daily IP dumps, parses the OpenCanary log. `--cutoff A,B` parses the hp-synlog pcaps (stdlib pcap reader) and runs the pre-registered per-source cut-off analysis. |
 | `bin/collect.sh` | rsync puller run from the collector machine. Pull-only, never writes to nodes. |
 | `bin/verify-exposure.sh` | External check that all hosts expose an identical port set. Run before trusting any comparison. |
 | `testdata/` | nft JSON fixtures (`counters.json`, `scan4.json`, `scan6.json`) for exercising `hp_snapshot.py`. |
@@ -119,6 +119,12 @@ collected data; `analyze.py` can run anywhere Python 3 exists given a populated
 - **Collected data contains third-party IP addresses.** `data/`, `nodes.txt`,
   `image.tar`, `results.csv`, `*.png` and `NOTES.local.md` are gitignored — keep
   it that way. Never commit measurement data or a node list.
+- **Cut-off thresholds are pre-registered.** `MIN_SYNS`, `OUTLIVE_GAP`, `MAX_SPAN`,
+  `MIN_SHARED`, `HEAVY_PORTS` in `analyze.py` were fixed before the measurement
+  window. Do not tune them after looking at data or expose them as options.
+- **`hp-nft.service` is a `RemainAfterExit` oneshot.** A re-run must
+  `systemctl restart` it; `enable --now` on an active unit does not reload the
+  regenerated ruleset.
 - **Counters are cumulative;** `analyze.py` treats a decrease as a reset. Don't
   "fix" that into naive subtraction.
 - **Docker packaging on Debian 13:** `docker-cli` and `docker-compose` are only

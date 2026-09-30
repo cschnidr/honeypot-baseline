@@ -40,7 +40,7 @@ apt-get update -qq
 # CLI and `docker compose` subcommand are missing and the image build fails.
 # On trixie the `docker-compose` package is Compose v2 (pulls docker-buildx).
 apt-get install -y -qq --no-install-recommends \
-    nftables docker.io docker-cli docker-compose python3 jq rsync chrony ca-certificates
+    nftables docker.io docker-cli docker-compose python3 jq rsync chrony ca-certificates tcpdump
 
 log "Setting timezone to UTC, enabling chrony"
 timedatectl set-timezone UTC
@@ -148,7 +148,10 @@ ExecStart=/usr/sbin/nft -f $NFT
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable --now hp-nft.service
+systemctl enable hp-nft.service
+# restart, not `enable --now`: the unit is a RemainAfterExit oneshot, so on a
+# re-run `--now` sees it active and would NOT reload the regenerated ruleset.
+systemctl restart hp-nft.service
 log "nftables active"
 
 # --- 4. OpenCanary image --------------------------------------------------
@@ -235,6 +238,45 @@ systemctl daemon-reload
 systemctl enable --now hp-snapshot.timer hp-ipdump.timer
 /usr/local/bin/hp-snapshot   # write a baseline immediately
 
+# --- 6b. Per-source SYN log ----------------------------------------------
+# Timestamped record of every inbound TCP SYN (source, destination port,
+# microsecond time) so analysis can see WHEN each scanner starts and stops
+# reaching the host - the counters and daily set dumps cannot. Headers only
+# (snaplen 96), hourly files, gzipped by hp-snapshot once closed.
+# Filter: IPv4 or IPv6 (no extension headers) TCP with SYN set and ACK clear,
+# inbound only, management port excluded.
+SYNLOG_DIR="$DATA/synlog"
+SYNLOG_IFACE="$(ip -o route show default 2>/dev/null | awk '{print $5; exit}')"
+[[ -n "$SYNLOG_IFACE" ]] || die "no default-route interface found for hp-synlog"
+SYNLOG_FILTER="((ip and tcp[tcpflags] & (tcp-syn|tcp-ack) == tcp-syn) or (ip6 and ip6[6] == 6 and ip6[53] & 0x12 == 0x02)) and not dst port $MGMT_PORT"
+if id -u tcpdump >/dev/null 2>&1; then SYNLOG_USER=tcpdump; else SYNLOG_USER=root; fi
+install -d -m 0755 -o "$SYNLOG_USER" "$SYNLOG_DIR"
+tcpdump -d -i "$SYNLOG_IFACE" "$SYNLOG_FILTER" >/dev/null \
+  || die "hp-synlog capture filter does not compile on $SYNLOG_IFACE"
+
+log "Installing hp-synlog on $SYNLOG_IFACE"
+cat > /etc/systemd/system/hp-synlog.service <<EOF
+[Unit]
+Description=Honeypot per-source SYN log (hourly pcap)
+After=network-online.target hp-nft.service
+Wants=network-online.target
+[Service]
+# The .pcap extension matters: Debian's tcpdump AppArmor profile only allows
+# writing capture files with it. `%%` because systemd expands `%` specifiers
+# itself (%Y, %m, %d, %H, %M, %S all mean something to systemd).
+ExecStart=/usr/bin/tcpdump -n -p -i $SYNLOG_IFACE -Q in -s 96 -U -Z $SYNLOG_USER -G 3600 -w $SYNLOG_DIR/$NODE_ID-%%Y%%m%%dT%%H%%M%%S.pcap $SYNLOG_FILTER
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable hp-synlog.service
+systemctl restart hp-synlog.service
+sleep 2
+systemctl is-active --quiet hp-synlog.service \
+  || die "hp-synlog failed to start - see: journalctl -u hp-synlog"
+
 # --- 7. Fingerprint ------------------------------------------------------
 MANIFEST="$DATA/manifest.txt"
 {
@@ -250,6 +292,9 @@ MANIFEST="$DATA/manifest.txt"
   echo "sha256_opencanary_conf=$(sha256sum "$PREFIX/opencanary.conf" | cut -d' ' -f1)"
   echo "sha256_nft=$(sha256sum "$NFT" | cut -d' ' -f1)"
   echo "docker_image_id=$(docker image inspect -f '{{.Id}}' "$IMG")"
+  echo "synlog_iface=$SYNLOG_IFACE"
+  echo "synlog_filter=$SYNLOG_FILTER"
+  echo "tcpdump_version=$(tcpdump --version 2>&1 | head -1)"
 } > "$MANIFEST"
 
 echo
