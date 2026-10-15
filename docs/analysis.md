@@ -136,9 +136,24 @@ control for a datacenter one. Look at:
   broad (upstream filtering, address-range reputation). A difference
   concentrated on specific service ports points at targeted scanning for those
   services.
-- **Unique sources versus volume.** Fewer unique sources at similar volume means
-  a few noisy scanners; similar source counts at lower volume means per-source
-  throttling somewhere. Different mechanisms, worth distinguishing.
+- **Unique sources versus volume.** Fewer unique sources at similar volume
+  means a few noisy scanners. Similar source counts at lower volume is NOT
+  evidence of per-source throttling, however tempting that reading is: a
+  right-skewed volume distribution produces exactly the same aggregate. In one
+  window the mean was 100 against 406 SYNs per source while the median of the
+  shared sources went the other way (16 against 8), and 84 % of the surplus sat
+  on two ports, one campaign from a single address carrying a third of it.
+  Decide this on the per-source distribution - `--cutoff` plus the median and
+  the top-source concentration - never on the mean.
+- **Receiver-side blindness.** No amount of passive data separates "dropped
+  upstream" from "never sent": both produce no packet at the receiver. Any claim
+  about filtering in front of a node needs a sender whose offered rate is known,
+  i.e. an active measurement against your own addresses.
+- **The instrument answering at all.** Check this first and keep checking it:
+  `bin/verify-services.py` on every node. A module that accepts connections and
+  then writes nothing is invisible to port checks, to the container's restart
+  count, and to its own connection logging - and it collapses the node's traffic
+  for reasons that look exactly like a network effect.
 - **HTTP paths.** The clearest signal of *what* is being looked for —
   `/.env`, framework admin paths, recent CVE probes.
 - **Time to first contact.** How long a fresh address survives unnoticed.

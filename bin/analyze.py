@@ -132,8 +132,15 @@ def unique_ips(node_dir, start=None, end=None):
     return seen
 
 
-def read_opencanary(node_dir, start, end):
-    """Event counts, credentials and HTTP paths from the OpenCanary log."""
+def read_opencanary(node_dir, start, end, exclude=frozenset()):
+    """Event counts, credentials and HTTP paths from the OpenCanary log.
+
+    ``exclude`` drops events from the given source addresses. Pass the address
+    of anything that probes the nodes on purpose (bin/verify-services.py, a
+    liveness timer, your own curl from a laptop): those connections are
+    recorded exactly like an attacker's, and a probe that submits a login would
+    otherwise show up in the credential ranking as a real guess.
+    """
     stats = {
         "events": 0,
         "by_logtype": collections.Counter(),
@@ -154,6 +161,10 @@ def read_opencanary(node_dir, start, end):
             try:
                 ev = json.loads(line)
             except ValueError:
+                continue
+            # Before the window check, so an excluded probe cannot set
+            # first_event either.
+            if exclude and ev.get("src_host") in exclude:
                 continue
             ts = ev.get("local_time_adjusted") or ev.get("local_time")
             when = None
@@ -269,11 +280,12 @@ def read_pcap(path):
                 yield sec + frac * unit, hit[0], hit[1]
 
 
-def read_synlog(node_dir, start, end):
+def read_synlog(node_dir, start, end, exclude=frozenset()):
     """Per-source SYN timeline inside [start, end].
 
     Returns {src: {"ts": [sorted epoch seconds], "ports": set}} or None when
-    the node has no synlog directory.
+    the node has no synlog directory. ``exclude`` drops sources entirely - see
+    read_opencanary().
     """
     d = node_dir / "synlog"
     if not d.is_dir():
@@ -289,6 +301,8 @@ def read_synlog(node_dir, start, end):
                 continue
         try:
             for ts, src, dport in read_pcap(path):
+                if src in exclude:
+                    continue
                 if t0 <= ts <= t1:
                     s = srcs.setdefault(src, {"ts": [], "ports": set()})
                     s["ts"].append(ts)
@@ -390,10 +404,18 @@ def main():
     ap.add_argument("--cutoff", metavar="A,B",
                     help="per-source cut-off analysis on hp-synlog pcaps; "
                          "A = host with claimed restriction, B = comparison host")
+    ap.add_argument("--exclude-src", metavar="IP[,IP...]", default="",
+                    help="drop these source addresses from the OpenCanary log AND the "
+                         "synlog. Use it for every address that probes the nodes on "
+                         "purpose - bin/verify-services.py, a liveness timer, your own "
+                         "curl - because those connections are recorded exactly like an "
+                         "attacker's. Record the addresses in NOTES.local.md so the "
+                         "exclusion is reproducible.")
     args = ap.parse_args()
 
     start = parse_ts(args.start) if args.start else None
     end = parse_ts(args.end) if args.end else None
+    exclude = frozenset(x.strip() for x in args.exclude_src.split(",") if x.strip())
 
     root = pathlib.Path(args.data_dir)
     nodes = sorted(p for p in root.iterdir() if (p / "snapshots").is_dir())
@@ -411,12 +433,15 @@ def main():
             "last_snapshot": rows[-1]["_ts"] if rows else None,
             "counters": counter_deltas(rows, start, end),
             "unique_ips": unique_ips(node_dir, start, end),
-            "canary": read_opencanary(node_dir, start, end),
-            "synlog": read_synlog(node_dir, start, end),
+            "canary": read_opencanary(node_dir, start, end, exclude),
+            "synlog": read_synlog(node_dir, start, end, exclude),
         }
 
     window = f"{start or 'begin'} .. {end or 'end'}"
     print(f"Measurement window: {window}\n")
+    if exclude:
+        print("Excluded source addresses (measurement infrastructure): "
+              + ", ".join(sorted(exclude)) + "\n")
 
     print(f"{'node':<14}{'SYN total':>12}{'unique src':>12}"
           f"{'canary ev':>11}{'canary src':>12}  first canary event")
