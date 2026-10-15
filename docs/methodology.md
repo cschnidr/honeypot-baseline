@@ -139,6 +139,44 @@ compare its per-host SYN total with the counter total and report any gap.
    Counters are not affected; `analyze.py` handles them by delta.
 5. Record the window start and each host's allocation time.
 
+## The emulation has to answer, continuously
+
+An open port is not a working honeypot. A module that accepts the TCP
+connection and then writes nothing is indistinguishable from a healthy one by
+every check this repo originally had: the port is bound, the container's restart
+count stays zero, and the module keeps logging connection events. From the
+outside the attacker sees a dead service, skips the host after one attempt, and
+the node's traffic volume collapses — which looks exactly like filtering in
+front of it.
+
+This is not hypothetical. In the first window the `basicLogin` skin shipped in
+the published opencanary package without `redirect.html`, the file the module
+reads for every request answered with a 302. The result was `HTTP/1.0 500` on
+`GET /` for the whole window, on every node: 24 and 30 recorded GET events in
+three weeks, and **zero** login attempts, because no scanner ever reached the
+login page. The HTTP dimension — the reason for choosing this honeypot over a
+shell emulator — was absent from the data while every other indicator said the
+node was healthy.
+
+Two consequences, both implemented:
+
+- `bin/verify-services.py` checks that each service **answers** with the
+  expected banner or handshake, not that its port is open. Run it before the
+  window, and on a timer during the window. Two nodes that disagree are not
+  comparable.
+- `http.log_redirect_request` is on. `GET /` is answered with a 302 to
+  `/index.html`; a scanner that fires one request and ignores the redirect would
+  otherwise leave no event at all, so the HTTP population would be reduced to
+  redirect-following clients. That is a selection bias, not a smaller sample.
+  Redirects are logged as logtype 3003, separate from 3000 (GET) and 3001 (login
+  attempt), so data from before and after the flag stays distinguishable.
+
+A probe is traffic too. Every run of `verify-services.py` is recorded like an
+attacker's connection, so pass its source address to
+`analyze.py --exclude-src` and record it in `NOTES.local.md`. Keep the probe
+banner-only: a probe that submits a login would appear in the credential
+ranking as a real guess.
+
 ## Limitations to state in any write-up
 
 - n=1 host per condition. Differences between two hosts are observations, not

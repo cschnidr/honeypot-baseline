@@ -290,6 +290,13 @@ MANIFEST="$DATA/manifest.txt"
   echo "cnt_tcp=$CNT_TCP"
   echo "cnt_udp=$CNT_UDP"
   echo "sha256_opencanary_conf=$(sha256sum "$PREFIX/opencanary.conf" | cut -d' ' -f1)"
+  # The rendered config carries this node's own NODE_ID, so the hash above can
+  # never match across nodes and proves nothing about them being configured
+  # alike - which is the one thing the manifest exists to show. The hash below
+  # is taken after substituting the node id back out, so it IS comparable:
+  #   grep sha256_opencanary_conf_norm */manifest.txt | awk '{print $2}' | sort -u
+  # must print exactly one line.
+  echo "sha256_opencanary_conf_norm=$(sed "s/$NODE_ID/__NODE_ID__/g" "$PREFIX/opencanary.conf" | sha256sum | cut -d' ' -f1)"
   echo "sha256_nft=$(sha256sum "$NFT" | cut -d' ' -f1)"
   echo "docker_image_id=$(docker image inspect -f '{{.Id}}' "$IMG")"
   echo "synlog_iface=$SYNLOG_IFACE"
