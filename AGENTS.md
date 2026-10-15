@@ -98,6 +98,16 @@ collected data; `analyze.py` can run anywhere Python 3 exists given a populated
   prefix to sum SYNs. `c_u<port>`/`c_udp_other` are unicast-only
   (`meta pkttype host`); broadcast/multicast UDP is bucketed in `c_udp_bcast`
   and is a per-host environment characteristic, not a scan signal.
+- **This repository is public; the deployment is not.** No real node address,
+  hostname or provider name belongs in a tracked file — not in code, not in a
+  usage example, not in a docstring, test fixture, commit message or PR
+  description. Examples use RFC 5737 addresses (`203.0.113.x`,
+  `198.51.100.x`, `192.0.2.x`). The address-to-provider mapping, the measurement
+  window timestamps and the probe source addresses live in `NOTES.local.md`,
+  which is gitignored. Grep the diff before pushing:
+  `git show HEAD | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}'`. A follow-up commit
+  does not remove a leaked address from the history; the branch has to be
+  rewritten.
 - Reproducibility is the whole point: the image is built once and shipped as
   `image.tar`; identity is the recorded Docker image ID in each node's manifest,
   not a version tag.
