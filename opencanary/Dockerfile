@@ -29,6 +29,25 @@ assert d.is_dir(), d; \
 (d / 'redirect.html').write_bytes(pathlib.Path('/tmp/redirect.html').read_bytes())" \
  && rm /tmp/redirect.html
 
+# entlure: enterprise-app lure module (own file, installed into the package).
+# Unlike the stock http module it logs EVERY request on its port, including
+# unknown paths - the stock module's Error resource answers 404 without
+# logging, which made path enumeration invisible (verified live on window 1).
+# The import check below is the build-time smoke test: it fails the build if
+# the module contract (NAME, getService) ever breaks.
+COPY modules/entlure.py /tmp/entlure/entlure.py
+COPY skin/entlure /tmp/entlure/skin
+RUN python -c "import pathlib, shutil, importlib, opencanary.modules as m; \
+root = pathlib.Path(m.__file__).parent; \
+shutil.copy('/tmp/entlure/entlure.py', root / 'entlure.py'); \
+dst = root / 'data/entlure'; dst.mkdir(parents=True, exist_ok=True); \
+[shutil.copy(str(p), dst / p.name) for p in pathlib.Path('/tmp/entlure/skin').iterdir()]; \
+mod = importlib.import_module('opencanary.modules.entlure'); \
+assert mod.CanaryEntLure.NAME == 'entlure'; \
+assert len(mod.LURES) >= 8; \
+print('entlure installed with', len(mod.LURES), 'lures')" \
+ && rm -rf /tmp/entlure
+
 # Deliberately no version pin: the image is built ONCE and distributed to all
 # nodes via `docker save` / `docker load`. Identity comes from the tar (image
 # ID recorded in each node's manifest.txt), not from the pip pin.
