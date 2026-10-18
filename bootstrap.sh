@@ -20,7 +20,9 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Port contract (MUST be identical on every node) -----------------------
 # Emulated by OpenCanary -> accepted, full interaction is logged.
-HP_TCP="21 22 23 80 1433 3306 3389 5900 6379 8080 9418"
+# 443 is the entlure module (window 2); it stays in CNT_TCP below as well,
+# so SYN counting and interaction both see it.
+HP_TCP="21 22 23 80 443 1433 3306 3389 5900 6379 8080 9418"
 # Counted only (SYN counters), no listener -> falls through to policy drop.
 CNT_TCP="21 22 23 25 80 110 139 143 443 445 587 1433 1521 2375 3306 3389 5432 5900 6379 8080 8443 9200 9418 11211 27017"
 CNT_UDP="53 123 137 161 500 1900 5060 11211"
@@ -39,8 +41,10 @@ apt-get update -qq
 # so with --no-install-recommends they must be named explicitly or the `docker`
 # CLI and `docker compose` subcommand are missing and the image build fails.
 # On trixie the `docker-compose` package is Compose v2 (pulls docker-buildx).
+# certbot: issues the node's LE certificate for the entlure TLS port via the
+# honeypot's own static web tree (see bin/le-setup.sh and docs/window-2.md).
 apt-get install -y -qq --no-install-recommends \
-    nftables docker.io docker-cli docker-compose python3 jq rsync chrony ca-certificates tcpdump
+    nftables docker.io docker-cli docker-compose python3 jq rsync chrony ca-certificates tcpdump certbot
 
 log "Setting timezone to UTC, enabling chrony"
 timedatectl set-timezone UTC
@@ -172,6 +176,17 @@ fi
 log "Writing OpenCanary config"
 sed "s/__NODE_ID__/$NODE_ID/g" "$SRC/opencanary/opencanary.conf" > "$PREFIX/opencanary.conf"
 
+# TLS material (installed by bin/le-setup.sh) and the ACME webroot.
+# The webroot is mounted INTO the honeypot's static skin tree, so the running
+# http module serves ACME challenges itself - no port-80 downtime, no extra
+# listener. The in-image static path is resolved from the image, never
+# hardcoded, so a package/python bump cannot silently break the mount.
+mkdir -p "$PREFIX/tls" "$PREFIX/le-webroot/.well-known"
+STATIC_DIR="$(docker run --rm "$IMG" python -c \
+  "from opencanary.modules.http import CanaryHTTP as C; import os; print(os.path.join(C.resource_dir(),'skin','basicLogin','static'))")" \
+  || die "could not resolve the in-image static skin path from $IMG"
+[[ -n "$STATIC_DIR" ]] || die "empty in-image static skin path"
+
 cat > "$PREFIX/docker-compose.yml" <<EOF
 name: honeypot
 services:
@@ -186,6 +201,11 @@ services:
     volumes:
       - $PREFIX/opencanary.conf:/etc/opencanaryd/opencanary.conf:ro
       - /var/log/opencanary:/var/log/opencanary
+      # entlure TLS certs, written by bin/le-setup.sh (generic paths, no FQDN)
+      - $PREFIX/tls:/etc/opencanaryd/tls:ro
+      # ACME webroot: host-side certbot writes challenges here, the running
+      # http module serves them from its static skin tree
+      - $PREFIX/le-webroot/.well-known:$STATIC_DIR/.well-known
     logging:
       driver: json-file
       options:
