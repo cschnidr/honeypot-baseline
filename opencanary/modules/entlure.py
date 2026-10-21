@@ -141,12 +141,61 @@ class CanaryEntLure(CanaryService):
                 self.bodies[fname] = fh.read()
         self.notfound_body = b"<html><body><h1>404 Not Found</h1></body></html>"
 
+    def _cert_paths(self):
+        """Resolve the TLS cert/key pair, never crashing on missing files.
+
+        Rollout sequence depends on this: the container must come up BEFORE
+        le-setup.sh can issue the first certificate, so at first boot the
+        configured paths do not exist yet. Same fallback pattern as the stock
+        https module: generate a self-signed pair into a container-local
+        path and serve that until le-setup installs the real one and the
+        container restarts.
+        """
+        if os.path.exists(self.cert) and os.path.exists(self.key):
+            return self.cert, self.key
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+        import datetime
+
+        fb_dir = "/etc/ssl/opencanary"
+        os.makedirs(fb_dir, exist_ok=True)
+        fb_cert = os.path.join(fb_dir, "entlure-fallback.pem")
+        fb_key = os.path.join(fb_dir, "entlure-fallback.key")
+        if not (os.path.exists(fb_cert) and os.path.exists(fb_key)):
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            with open(fb_key, "wb") as fh:
+                fh.write(
+                    key.private_bytes(
+                        serialization.Encoding.PEM,
+                        serialization.PrivateFormat.TraditionalOpenSSL,
+                        serialization.NoEncryption(),
+                    )
+                )
+            name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+            now = datetime.datetime.utcnow()
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(name)
+                .issuer_name(name)
+                .public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(now)
+                .not_valid_after(now + datetime.timedelta(days=365))
+                .sign(key, hashes.SHA256())
+            )
+            with open(fb_cert, "wb") as fh:
+                fh.write(cert.public_bytes(serialization.Encoding.PEM))
+        return fb_cert, fb_key
+
     def getService(self):
         site = server.Site(EntLureRoot(self))
         if self.use_tls:
             from twisted.internet.ssl import DefaultOpenSSLContextFactory
 
-            context = DefaultOpenSSLContextFactory(self.key, self.cert)
+            cert, key = self._cert_paths()
+            context = DefaultOpenSSLContextFactory(key, cert)
             return internet.SSLServer(
                 self.port, site, context, interface=self.listen_addr
             )
