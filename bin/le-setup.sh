@@ -60,6 +60,8 @@ cat > /etc/letsencrypt/renewal-hooks/deploy/honeypot-entlure.sh <<EOF
 set -euo pipefail
 install -m 0644 "/etc/letsencrypt/live/$LE_FQDN/fullchain.pem" "$TLSOUT/fullchain.pem"
 install -m 0600 "/etc/letsencrypt/live/$LE_FQDN/privkey.pem"   "$TLSOUT/privkey.pem"
+# entlure holds the cert in memory; restart so issuance AND renewals go live.
+docker compose -f "$PREFIX/docker-compose.yml" restart
 EOF
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/honeypot-entlure.sh
 
