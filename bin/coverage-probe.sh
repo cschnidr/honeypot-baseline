@@ -34,6 +34,9 @@ PATHS=(
   "_layouts/15/start.aspx"
   "_layouts/15/toolpane.aspx"
   "global-protect/login.esp"
+  "wp-login.php"
+  "xmlrpc.php"
+  "index.php"
 )
 
 SENT=0

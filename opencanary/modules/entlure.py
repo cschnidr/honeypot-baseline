@@ -16,6 +16,9 @@
 #   - Exchange    (OWA/ECP/autodiscover credential and exploit probes)
 #   - SharePoint  (/_layouts/15/ toolpane/start probes)
 #   - VPN portal  (GlobalProtect-style login probe)
+#   - WordPress   (PHP-app probes: wp-login credential stuffing, xmlrpc
+#                  brute-force amplification, generic index.php probes --
+#                  the paths PHP-CVE exploitation waves hunt)
 #
 # Logtypes (own range, see bin/analyze.py output "event types"):
 #   50001  GET/HEAD/OPTIONS against a known lure path
@@ -55,6 +58,13 @@ LURES = {
     "_layouts/15/start.aspx": ("sharepoint", "sharepoint.html", b"text/html; charset=utf-8", 200),
     "_layouts/15/toolpane.aspx": ("sharepoint", "sharepoint.html", b"text/html; charset=utf-8", 200),
     "global-protect/login.esp": ("gpvpn", "gp-login.html", b"text/html; charset=utf-8", 200),
+    # PHP-app surface: WordPress is the most-probed PHP target class on the
+    # internet (credential stuffing on wp-login, brute-force amplification on
+    # xmlrpc, generic app probes on index.php). PHP-CVE exploitation waves
+    # hunt exactly these paths.
+    "wp-login.php": ("wordpress", "wp-login.html", b"text/html; charset=utf-8", 200),
+    "xmlrpc.php": ("wordpress", "xmlrpc.txt", b"text/plain; charset=utf-8", 200),
+    "index.php": ("wordpress", "wp-index.html", b"text/html; charset=utf-8", 200),
 }
 
 WRITE_METHODS = (b"POST", b"PUT", b"PATCH", b"DELETE")
