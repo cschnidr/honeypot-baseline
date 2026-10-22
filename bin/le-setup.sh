@@ -22,7 +22,7 @@
 set -euo pipefail
 
 : "${LE_FQDN:?set LE_FQDN, the provider-assigned hostname of this node}"
-: "${LE_EMAIL:?set LE_EMAIL, contact address for the Let's Encrypt account}"
+: "${LE_EMAIL:?set LE_EMAIL, the ACME contact address for this node}"
 PREFIX="${PREFIX:-/opt/honeypot}"
 WEBROOT="$PREFIX/le-webroot"
 TLSOUT="$PREFIX/tls"
