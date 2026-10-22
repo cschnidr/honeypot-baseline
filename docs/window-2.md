@@ -33,9 +33,15 @@ address) lives in `NOTES.local.md` -- never in tracked files.
 
 1. Freeze window-1 data and record the boundary timestamp in `NOTES.local.md`.
 2. Merge PR #8 and this branch; `git pull` into the node's checkout.
-3. Rebuild the image on the build node: `docker build -t honeypot-opencanary:pinned opencanary/`
-   (the build FAILS LOUDLY if the entlure import smoke test breaks).
-   Distribute: `docker save` / `docker load`, record the new image ID.
+3. **Move any stale `image.tar` in the repo root aside FIRST** (`mv image.tar
+   image.tar.window1-bak`): `bootstrap.sh` step 4 auto-loads `image.tar` if
+   present and would clobber the freshly built `pinned` tag back to the old
+   window-1 image. Then rebuild on the build node:
+   `docker build -t honeypot-opencanary:pinned opencanary/`
+   (the build FAILS LOUDLY if the entlure import smoke test breaks, and now
+   also registers entlure in opencanary.tac — the module is not started
+   otherwise). Distribute: `docker save` / `docker load`, record the new
+   image ID, and confirm it matches on both nodes.
 4. Re-run `bootstrap.sh` on each node with the SAME `NODE_ID` and
    `ADMIN_CIDR` from `NOTES.local.md` (idempotent; regenerates nft, compose,
    mounts).
