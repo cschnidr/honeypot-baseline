@@ -62,6 +62,9 @@ rm -f "$WEBROOT/.well-known/$MARKER"
 
 # Deploy hook FIRST, so every renewal (not just this run) refreshes the
 # entlure-readable copy. Lives only on the host; the FQDN never enters git.
+# certbot creates this tree on first run, but we write the hook before that
+# first run, so ensure it exists.
+mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/honeypot-entlure.sh <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
