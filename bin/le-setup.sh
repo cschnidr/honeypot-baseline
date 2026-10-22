@@ -34,11 +34,18 @@ command -v certbot >/dev/null || { echo "certbot missing (bootstrap.sh installs 
 mkdir -p "$WEBROOT/.well-known" "$TLSOUT"
 
 # Pre-flight 1: the FQDN must forward-resolve to THIS node, or HTTP-01 fails.
-MY_IP="$(ip -o route get 1 2>/dev/null | awk '{print $7; exit}')"
-FQDN_IP="$(getent ahostsv4 "$LE_FQDN" | awk 'NR==1{print $1}')"
+# Vars are pre-initialised and the pipelines carry `|| true`, so a transient
+# `ip`/`getent` failure under `set -euo pipefail` can neither abort the script
+# nor leave a var unbound (an unbound MY_IP aborting here was observed once).
+# `src` is extracted by name, not column position, so the `ip` output layout
+# cannot shift it.
+MY_IP=""
+MY_IP="$(ip -o route get 1 2>/dev/null | sed -n 's/.* src \([^ ]*\).*/\1/p' | head -1)" || true
+FQDN_IP=""
+FQDN_IP="$(getent ahostsv4 "$LE_FQDN" 2>/dev/null | awk 'NR==1{print $1}')" || true
 [[ -n "$FQDN_IP" ]] || { echo "$LE_FQDN does not resolve" >&2; exit 1; }
-[[ "$FQDN_IP" == "$MY_IP" ]] || \
-  echo "WARNING: $LE_FQDN -> $FQDN_IP, this node -> $MY_IP (continuing anyway)" >&2
+[[ -n "$MY_IP" && "$FQDN_IP" == "$MY_IP" ]] || \
+  echo "WARNING: $LE_FQDN -> ${FQDN_IP:-?}, this node -> ${MY_IP:-unknown} (continuing anyway)" >&2
 
 # Pre-flight 2: prove the webroot is served through the honeypot, so a failed
 # issuance never burns the 5/week rate limit on a path problem.
